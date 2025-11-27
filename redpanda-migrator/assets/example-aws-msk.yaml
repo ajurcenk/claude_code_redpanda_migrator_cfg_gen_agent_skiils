@@ -1,0 +1,78 @@
+# Example: AWS MSK to Redpanda Cloud Migration
+# Use case: Migrating from AWS MSK with IAM authentication
+
+http:
+  enabled: false
+
+input:
+  redpanda_migrator_bundle:
+    redpanda_migrator:
+      seed_brokers:
+        - "b-1.msk-cluster.abc123.kafka.us-east-1.amazonaws.com:9096"
+        - "b-2.msk-cluster.abc123.kafka.us-east-1.amazonaws.com:9096"
+        - "b-3.msk-cluster.abc123.kafka.us-east-1.amazonaws.com:9096"
+      
+      # Migrate all application topics
+      topics:
+        - '^[^_]'
+      regexp_topics: true
+      
+      consumer_group: "msk_to_redpanda"
+      start_from_oldest: true
+      
+      # AWS MSK IAM authentication
+      sasl:
+        - mechanism: AWS_MSK_IAM
+          aws:
+            enabled: true
+            region: "us-east-1"
+            # Use EC2 instance role
+            use_ec2_role_provider: true
+      
+      # MSK requires TLS
+      tls:
+        enabled: true
+    
+    # AWS Glue Schema Registry (if using schemas)
+    schema_registry:
+      url: "https://glue-schema-registry.us-east-1.amazonaws.com"
+      include_deleted: true
+    
+    migrate_schemas_before_data: true
+
+output:
+  redpanda_migrator_bundle:
+    redpanda_migrator:
+      seed_brokers:
+        - "seed-xyz789.cloud.redpanda.com:9092"
+      
+      # Override replication factor for Redpanda Cloud
+      replication_factor_override: 3
+      
+      # Enable consumer group offset translation
+      consumer_groups: true
+      
+      # MSK ACLs don't translate well to Redpanda - manage separately
+      sync_topic_acls: false
+      
+      # Redpanda Cloud authentication
+      sasl:
+        - mechanism: SCRAM-SHA-256
+          username: "redpanda-user"
+          password: "redpanda-password"
+      
+      tls:
+        enabled: true
+    
+    # Redpanda Cloud Schema Registry
+    schema_registry:
+      url: "https://schema-registry.cloud.redpanda.com:30081"
+      migrate_schema_versions: "all"
+      sync_interval: "1m"
+      basic_auth:
+        enabled: true
+        username: "sr-user"
+        password: "sr-password"
+
+metrics:
+  prometheus: {}

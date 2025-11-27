@@ -1,0 +1,44 @@
+# Example 2: Redpanda to Redpanda with Schema Migration (One-time)
+# Use case: Migrate data and schemas between Redpanda clusters
+# Source: Redpanda cluster in testzone (redpanda-0.testzone.local:31092)
+# Destination: Local Redpanda cluster (localhost:9092)
+# Scope: Data and schemas (one-time schema sync)
+# Consumer offsets: Enabled with 1-minute sync interval
+# ACLs: Not migrated
+# Schema sync: One-time only (default behavior when interval not specified)
+
+http:
+  enabled: false
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["redpanda-0.testzone.local:31092"]
+    
+    # Use regex pattern to match topics
+    regexp_topics: true
+    topics: ["test_migrator.*"]
+    
+    consumer_group: "migration_test_v4"
+    
+    # Fast topic discovery
+    metadata_max_age: 30s
+    
+    # Source schema registry
+    schema_registry:
+      url: "http://172.18.0.2:30081"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["localhost:9092"]
+    
+    # Consumer group offset translation every minute
+    consumer_groups:
+      interval: 1m
+    
+    # Schema registry enabled for one-time migration
+    schema_registry:
+      url: "http://localhost:8081"
+      enabled: true  # Enable schema migration (executed once on startup)

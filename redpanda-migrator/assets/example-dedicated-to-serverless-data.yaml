@@ -1,0 +1,70 @@
+# Example 6: Redpanda Cloud Dedicated to Serverless (Data-Only)
+# Use case: Migrate data from Dedicated to Serverless cluster
+# Source: Redpanda Cloud Dedicated cluster
+# Destination: Redpanda Cloud Serverless cluster
+# Scope: Data only, no schemas
+# Consumer offsets: Enabled with exclusions for internal consumer groups
+# ACLs: Not migrated
+# Authentication: TLS and SCRAM for both clusters
+# Note: Replace <> placeholders with actual values
+
+http:
+  enabled: false
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    # Dedicated cluster endpoint (typically .fmc.prd.cloud.redpanda.com)
+    seed_brokers: ["seed-<cluster-id>.fmc.prd.cloud.redpanda.com:9092"]
+    
+    regexp_topics: true
+    topics: ["test_migrator.*"]
+    
+    consumer_group: "migration_test_v1"
+    
+    metadata_max_age: 30s
+    
+    tls:
+      enabled: true
+    
+    sasl:
+      - mechanism: "SCRAM-SHA-256"  # or SCRAM-SHA-512
+        username: "<dedicated-username>"
+        password: "<dedicated-password>"
+    
+    schema_registry:
+      url: "https://schema-registry-<cluster-id>.fmc.prd.cloud.redpanda.com:30081"
+
+output:
+  redpanda_migrator:
+    # Serverless cluster endpoint (typically .mpx.prd.cloud.redpanda.com)
+    seed_brokers: ["seed-<cluster-id>.any.us-east-1.mpx.prd.cloud.redpanda.com:9092"]
+    
+    consumer_groups:
+      interval: 1m
+      # Exclude internal and system consumer groups
+      exclude:
+        - console-consumer-.*
+        - __.*
+        - kminion-end-to-end.*
+        - connect-cluster
+        - connectors-cluster
+        - connect.*
+        - __redpanda.*
+    
+    tls:
+      enabled: true
+    
+    sasl:
+      - mechanism: "SCRAM-SHA-256"  # or SCRAM-SHA-512
+        username: "<serverless-username>"
+        password: "<serverless-password>"
+    
+    schema_registry:
+      url: "https://schema-registry-<cluster-id>.any.us-east-1.mpx.prd.cloud.redpanda.com:30081"
+      enabled: false  # Data-only migration
+    
+    # REQUIRED for Serverless clusters
+    serverless: true

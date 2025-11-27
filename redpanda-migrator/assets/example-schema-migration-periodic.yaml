@@ -1,0 +1,46 @@
+# Example 3: Redpanda to Redpanda with Periodic Schema Migration
+# Use case: Continuous schema synchronization between Redpanda clusters
+# Source: Redpanda cluster in testzone (redpanda-0.testzone.local:31092)
+# Destination: Local Redpanda cluster (localhost:9092)
+# Scope: Data and schemas (periodic schema sync)
+# Consumer offsets: Enabled with 1-minute sync interval
+# ACLs: Not migrated
+# Schema sync: Two-phase approach
+#   1. Initial sync on startup
+#   2. Periodic sync every 10 seconds for ongoing schema updates
+
+http:
+  enabled: false
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["redpanda-0.testzone.local:31092"]
+    
+    regexp_topics: true
+    topics: ["test_migrator.*"]
+    
+    consumer_group: "migration_test_v4"
+    
+    metadata_max_age: 30s
+    
+    schema_registry:
+      url: "http://172.18.0.2:30081"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["localhost:9092"]
+    
+    consumer_groups:
+      interval: 1m
+    
+    # Schema registry with periodic synchronization
+    schema_registry:
+      url: "http://localhost:8081"
+      enabled: true
+      # Periodic schema sync every 10 seconds
+      # First loop: executed once after connecting to destination
+      # Second loop: starts after first and syncs periodically
+      interval: 10s

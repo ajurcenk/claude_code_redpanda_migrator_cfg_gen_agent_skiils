@@ -1,0 +1,62 @@
+# Example 8: Confluent Cloud to Redpanda Cloud Dedicated (Data-Only)
+# Use case: Migrate data from Confluent Cloud to Redpanda Cloud
+# Source: Confluent Cloud cluster
+# Destination: Redpanda Cloud Dedicated cluster
+# Scope: Data only, no schemas
+# Consumer offsets: Enabled with 10-second sync interval
+# ACLs: Not migrated
+# Authentication: PLAIN for Confluent, SCRAM-SHA-256 for Redpanda
+# Note: Confluent uses PLAIN auth with API keys, Redpanda uses SCRAM
+# Note: Replace <> placeholders with actual values
+
+http:
+  enabled: false
+
+logger:
+  level: INFO
+
+input:
+  redpanda_migrator:
+    # Confluent Cloud bootstrap server (format: pkc-xxxxx.region.provider.confluent.cloud:9092)
+    seed_brokers: ["pkc-<cluster-id>.us-west-2.aws.confluent.cloud:9092"]
+    
+    regexp_topics: true
+    topics: ["hello.*"]
+    
+    consumer_group: "migration_test_v3"
+    
+    metadata_max_age: 30s
+    
+    tls:
+      enabled: true
+      # Enable TLS renegotiation for Confluent Cloud compatibility
+      enable_renegotiation: true
+    
+    # Confluent Cloud uses PLAIN authentication with API keys
+    sasl:
+      - mechanism: "PLAIN"
+        username: "<confluent-api-key>"
+        password: "<confluent-api-secret>"
+    
+    schema_registry:
+      url: "https://<sr-id>.us-west-2.aws.confluent.cloud"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["seed-<cluster-id>.fmc.prd.cloud.redpanda.com:9092"]
+    
+    consumer_groups:
+      interval: 10s
+    
+    tls:
+      enabled: true
+    
+    # Redpanda Cloud uses SCRAM-SHA-256 authentication
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "<redpanda-username>"
+        password: "<redpanda-password>"
+    
+    schema_registry:
+      url: "https://schema-registry-<cluster-id>.fmc.prd.cloud.redpanda.com:30081"
+      enabled: false  # Data-only migration

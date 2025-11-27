@@ -1,0 +1,59 @@
+# Example 11: Periodic Schema Migration with Latest Version Only
+# Use case: Continuous sync of latest schema versions
+# Source: Redpanda cluster in testzone (redpanda-0.testzone.local:31092)
+# Destination: Local Redpanda cluster (localhost:9092)
+# Scope: Data and latest schema versions
+# Consumer offsets: Enabled with 1-minute sync interval
+# ACLs: Not migrated
+# Schema strategy: Latest version only with periodic sync
+# Note: Enabling periodic migration with "latest" allows obtaining the newest 
+#       schema version at each interval, capturing multiple recent versions over time
+
+http:
+  enabled: false
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["redpanda-0.testzone.local:31092"]
+    
+    regexp_topics: true
+    topics: ["test_migrator.*"]
+    
+    consumer_group: "migration_test_v4"
+    
+    metadata_max_age: 30s
+    
+    schema_registry:
+      url: "http://172.18.0.2:30081"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["localhost:9092"]
+    
+    consumer_groups:
+      interval: 1m
+    
+    schema_registry:
+      url: "http://localhost:8081"
+      enabled: true
+      
+      # Migrate only the latest version (not full version history)
+      versions: latest
+      
+      # Key insight: When combined with periodic sync (interval),
+      # this captures the latest version at each sync cycle.
+      # Over time, this migrates multiple recent versions as they become "latest"
+      # 
+      # Without interval: One-time sync of current latest version
+      # With interval: Continuous sync of whatever is latest at each cycle
+      #
+      # Use cases:
+      # - Active schema evolution during migration
+      # - Faster migration (no full history)
+      # - Still captures new versions as they're published
+      
+      # Note: For full version history migration, use:
+      # versions: all

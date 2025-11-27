@@ -1,0 +1,46 @@
+# Example 4: Redpanda to Redpanda with Schema Subject Filtering
+# Use case: Selective schema migration with latest version only
+# Source: Redpanda cluster in testzone (redpanda-0.testzone.local:31092)
+# Destination: Local Redpanda cluster (localhost:9092)
+# Scope: Data and filtered schemas
+# Consumer offsets: Enabled with 1-minute sync interval
+# ACLs: Not migrated
+# Schema filtering: Use include patterns to filter source schema subjects
+# Schema versions: Only latest version (not full history)
+
+http:
+  enabled: false
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["redpanda-0.testzone.local:31092"]
+    
+    regexp_topics: true
+    topics: ["test_migrator.*"]
+    
+    consumer_group: "migration_test_v4"
+    
+    metadata_max_age: 30s
+    
+    schema_registry:
+      url: "http://172.18.0.2:30081"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["localhost:9092"]
+    
+    consumer_groups:
+      interval: 1m
+    
+    schema_registry:
+      url: "http://localhost:8081"
+      enabled: true
+      # Migrate only the latest version (not full version history)
+      versions: latest
+      # Note: Use 'include' field with regex patterns to filter subjects
+      # Example patterns:
+      # include: ["^orders.*", "^users.*"]  # Only subjects starting with orders or users
+      # exclude: [".*test.*"]                # Exclude test subjects

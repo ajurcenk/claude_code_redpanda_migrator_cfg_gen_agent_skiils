@@ -1,0 +1,61 @@
+# Example 9: AWS MSK to Redpanda Cloud Dedicated (Data-Only)
+# Use case: Migrate data from AWS MSK to Redpanda Cloud
+# Source: AWS MSK cluster with SCRAM authentication
+# Destination: Redpanda Cloud Dedicated cluster
+# Scope: Data only, no schemas
+# Consumer offsets: Enabled with 10-second sync interval
+# ACLs: Not migrated
+# Authentication: SCRAM-SHA-512 for MSK, SCRAM-SHA-256 for Redpanda
+# Replication: Override to 3 (MSK may have different replication factor)
+# Note: Replace <> placeholders with actual values
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    # AWS MSK bootstrap servers (format: b-X.cluster-name.xxxxx.kafka.region.amazonaws.com:9096)
+    seed_brokers: ["b-1.msk-cluster-name.xxxxx.kafka.us-east-1.amazonaws.com:9096"]
+    
+    regexp_topics: true
+    topics: ["mks.*"]  # Note: Assuming "mks" is the pattern (could be "msk")
+    
+    consumer_group: "migration_test_v1"
+    
+    metadata_max_age: 30s
+    
+    tls:
+      enabled: true
+    
+    # AWS MSK SCRAM authentication (can be SHA-256 or SHA-512)
+    sasl:
+      - mechanism: "SCRAM-SHA-512"
+        username: "<msk-username>"
+        password: "<msk-password>"
+    
+    schema_registry:
+      # If using AWS Glue Schema Registry or other
+      url: "https://glue-schema-registry.us-east-1.amazonaws.com"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["seed-<cluster-id>.fmc.prd.cloud.redpanda.com:9092"]
+    
+    consumer_groups:
+      interval: 10s
+    
+    tls:
+      enabled: true
+    
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "<redpanda-username>"
+        password: "<redpanda-password>"
+    
+    # Override replication factor (useful when MSK has different RF than Redpanda)
+    # Example: MSK might have RF=2, but Redpanda Cloud typically uses RF=3
+    topic_replication_factor: 3
+    
+    schema_registry:
+      url: "https://schema-registry-<cluster-id>.fmc.prd.cloud.redpanda.com:30081"
+      enabled: false  # Data-only migration

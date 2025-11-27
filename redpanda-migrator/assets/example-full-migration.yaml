@@ -1,0 +1,92 @@
+# Example: Complete Migration with Data, Schemas, Consumer Offsets, and ACLs
+# Use case: Full production migration from Apache Kafka to Redpanda Cloud
+
+http:
+  enabled: false
+
+input:
+  redpanda_migrator_bundle:
+    redpanda_migrator:
+      seed_brokers:
+        - "source-kafka-1.example.com:9092"
+        - "source-kafka-2.example.com:9092"
+        - "source-kafka-3.example.com:9092"
+      
+      # Migrate all topics except internal topics starting with underscore
+      topics:
+        - '^[^_]'
+      regexp_topics: true
+      
+      consumer_group: "full_migrator"
+      start_from_oldest: true
+      
+      # Keep source replication factor
+      replication_factor_override: false
+      
+      # SASL authentication with SCRAM-SHA-256
+      sasl:
+        - mechanism: SCRAM-SHA-256
+          username: "kafka-user"
+          password: "kafka-password"
+      
+      # Enable TLS
+      tls:
+        enabled: true
+        skip_cert_verify: false
+    
+    # Source Schema Registry configuration
+    schema_registry:
+      url: "http://source-schema-registry:8081"
+      include_deleted: true
+      subject_filter: ""  # Migrate all subjects
+      basic_auth:
+        enabled: true
+        username: "sr-user"
+        password: "sr-password"
+    
+    # Migrate schemas before data to ensure proper deserialization
+    migrate_schemas_before_data: true
+
+output:
+  redpanda_migrator_bundle:
+    redpanda_migrator:
+      seed_brokers:
+        - "seed-abc123.cloud.redpanda.com:9092"
+      
+      # Keep source replication factor
+      replication_factor_override: false
+      
+      # Enable consumer group offset translation
+      consumer_groups: true
+      
+      # Enable ACL migration
+      sync_topic_acls: true
+      
+      # Authentication for Redpanda Cloud
+      sasl:
+        - mechanism: SCRAM-SHA-256
+          username: "redpanda-user"
+          password: "redpanda-password"
+      
+      # TLS enabled for Redpanda Cloud
+      tls:
+        enabled: true
+    
+    # Destination Schema Registry configuration
+    schema_registry:
+      url: "https://schema-registry.cloud.redpanda.com:30081"
+      
+      # Migrate all schema versions for complete history
+      migrate_schema_versions: "all"
+      
+      # Sync schemas every minute
+      sync_interval: "1m"
+      
+      basic_auth:
+        enabled: true
+        username: "dest-sr-user"
+        password: "dest-sr-password"
+
+# Enable Prometheus metrics
+metrics:
+  prometheus: {}

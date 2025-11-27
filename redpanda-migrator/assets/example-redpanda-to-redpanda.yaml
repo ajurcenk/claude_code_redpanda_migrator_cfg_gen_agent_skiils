@@ -1,0 +1,46 @@
+# Example: Redpanda to Redpanda Data-Only Migration with Consumer Offset Translation
+# Use case: Migrate topics between Redpanda clusters with consumer group offset translation
+# Source: Local Redpanda cluster
+# Destination: Redpanda cluster in testzone
+# Scope: Data only, no schema migration
+# Consumer offsets: Enabled with 1-minute sync interval
+# ACLs: Not migrated
+# Additional notes: Uses regex for topic matching and reduced metadata_max_age for
+#                   more frequent topic discovery (30s instead of default 5m)
+
+http:
+  enabled: false
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["localhost:9092"]
+    
+    # Use regex pattern to match topics starting with "test_migrator"
+    regexp_topics: true
+    topics: ["test_migrator.*"]
+    
+    consumer_group: "migration_test_v1"
+    
+    # Reduced from default 5m to 30s for more frequent topic discovery
+    # This allows regex patterns to pick up newly created topics faster
+    metadata_max_age: 30s
+    
+    # Schema registry configured but will be disabled in output
+    schema_registry:
+      url: "http://source-registry:8081"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["redpanda-0.testzone.local:31092"]
+    
+    # Enable consumer group offset translation with 1-minute sync interval
+    consumer_groups:
+      interval: 1m
+    
+    # Schema registry explicitly disabled - data-only migration
+    schema_registry:
+      url: "http://source-registry:8081"
+      enabled: false

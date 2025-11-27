@@ -1,0 +1,81 @@
+# Example 7: Redpanda Cloud Dedicated to Serverless (Data + Schemas)
+# Use case: Full migration from Dedicated to Serverless with schemas
+# Source: Redpanda Cloud Dedicated cluster
+# Destination: Redpanda Cloud Serverless cluster
+# Scope: Data and schemas
+# Consumer offsets: Enabled with exclusions for internal consumer groups
+# ACLs: Not migrated
+# Schema Registry: Full authentication with TLS
+# Note: Replace <> placeholders with actual values
+
+http:
+  enabled: false
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["seed-<dedicated-cluster-id>.fmc.prd.cloud.redpanda.com:9092"]
+    
+    regexp_topics: true
+    topics: ["test_migrator.*"]
+    
+    consumer_group: "migration_test_v1"
+    
+    metadata_max_age: 30s
+    
+    tls:
+      enabled: true
+    
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "<dedicated-username>"
+        password: "<dedicated-password>"
+    
+    # Source schema registry with authentication
+    schema_registry:
+      url: "https://schema-registry-<dedicated-cluster-id>.fmc.prd.cloud.redpanda.com:30081"
+      basic_auth:
+        enabled: true
+        username: "<sr-username>"
+        password: "<sr-password>"
+      tls:
+        enabled: true
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["seed-<serverless-cluster-id>.any.us-east-1.mpx.prd.cloud.redpanda.com:9092"]
+    
+    consumer_groups:
+      interval: 1m
+      exclude:
+        - console-consumer-.*
+        - __.*
+        - kminion-end-to-end.*
+        - connect-cluster
+        - connectors-cluster
+        - connect.*
+        - __redpanda.*
+    
+    tls:
+      enabled: true
+    
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "<serverless-username>"
+        password: "<serverless-password>"
+    
+    # Destination schema registry with authentication
+    schema_registry:
+      url: "https://schema-registry-<serverless-cluster-id>.any.us-east-1.mpx.prd.cloud.redpanda.com:30081"
+      basic_auth:
+        enabled: true
+        username: "<sr-username>"
+        password: "<sr-password>"
+      tls:
+        enabled: true
+      enabled: true  # Enable schema migration
+    
+    # REQUIRED for Serverless clusters
+    serverless: true

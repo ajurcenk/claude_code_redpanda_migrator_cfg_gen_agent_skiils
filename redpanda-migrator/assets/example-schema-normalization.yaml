@@ -1,0 +1,78 @@
+# Example 12: Schema Migration with Normalization
+# Use case: Migrate schemas with normalization to collapse duplicates
+# Source: Redpanda cluster in testzone (redpanda-0.testzone.local:31092)
+# Destination: Local Redpanda cluster (localhost:9092)
+# Scope: Data and schemas with normalization
+# Consumer offsets: Enabled with 1-minute sync interval
+# ACLs: Not migrated
+# Schema normalization: Enabled to handle semantic equivalence
+
+# What is Schema Normalization?
+# Schema normalization transforms schemas to have a consistent format during
+# registration or lookup. It helps collapse duplicate schemas into one by
+# comparing semantic equivalence rather than syntactic differences.
+#
+# Without normalization:
+#   {"type": "record", "name": "User", "fields": [{"name": "id", "type": "int"}]}
+#   {"type":"record","name":"User","fields":[{"name":"id","type":"int"}]}
+#   These would be treated as DIFFERENT schemas (different whitespace/formatting)
+#
+# With normalization:
+#   Both schemas are normalized to the same canonical form and treated as identical
+#
+# Benefits:
+# - Prevents duplicate schema registrations
+# - Reduces schema proliferation
+# - Maintains semantic compatibility
+# - Cleaner schema registry after migration
+
+http:
+  enabled: false
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["redpanda-0.testzone.local:31092"]
+    
+    regexp_topics: true
+    topics: ["test_migrator.*"]
+    
+    consumer_group: "migration_test_v4"
+    
+    metadata_max_age: 30s
+    
+    schema_registry:
+      url: "http://redpanda-0.testzone.local:30081"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["localhost:9092"]
+    
+    consumer_groups:
+      interval: 1m
+    
+    schema_registry:
+      url: "http://localhost:8081"
+      enabled: true
+      
+      # Periodic schema sync every 10 seconds
+      interval: 10s
+      
+      # Enable schema normalization
+      # Transforms schemas to canonical format before registration
+      # Collapses semantically identical but syntactically different schemas
+      normalize: true
+      
+      # Use cases for normalization:
+      # - Migrating from systems with inconsistent formatting
+      # - Preventing duplicate schema registrations
+      # - Cleaning up schema registry after migration
+      # - Maintaining semantic compatibility across versions
+      #
+      # When to use:
+      # - Source has schemas with varying whitespace/formatting
+      # - Multiple producers registered similar schemas differently
+      # - Want to ensure clean, deduplicated schema registry
+      # - Migrating between different schema registry implementations

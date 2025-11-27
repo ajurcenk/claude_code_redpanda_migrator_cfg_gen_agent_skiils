@@ -1,0 +1,58 @@
+# Example 10: Schema Migration with Subject Filtering (Include Pattern)
+# Use case: Selective schema migration using regex patterns
+# Source: Redpanda cluster in testzone (redpanda-0.testzone.local:31092)
+# Destination: Local Redpanda cluster (localhost:9092)
+# Scope: Data and filtered schemas
+# Consumer offsets: Enabled with 1-minute sync interval
+# ACLs: Not migrated
+# Schema filtering: Include only schemas matching "hello.*" pattern
+# Schema sync: Periodic (10 seconds)
+
+http:
+  enabled: false
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["redpanda-0.testzone.local:31092"]
+    
+    regexp_topics: true
+    topics: ["test_migrator.*"]
+    
+    consumer_group: "migration_test_v4"
+    
+    metadata_max_age: 30s
+    
+    schema_registry:
+      url: "http://172.18.0.2:30081"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["localhost:9092"]
+    
+    consumer_groups:
+      interval: 1m
+    
+    schema_registry:
+      url: "http://localhost:8081"
+      enabled: true
+      
+      # Periodic schema sync every 10 seconds
+      interval: 10s
+      
+      # Filter source schema subjects using regex patterns
+      # Only subjects matching these patterns will be migrated
+      include:
+        - "hello.*"  # Include all subjects starting with "hello"
+      
+      # Additional filtering examples (not used here, for reference):
+      # include:
+      #   - "orders.*"     # Include orders subjects
+      #   - "users.*"      # Include users subjects
+      #   - "^prod_.*"     # Include subjects starting with prod_
+      # 
+      # exclude:
+      #   - ".*test.*"     # Exclude test subjects
+      #   - ".*temp.*"     # Exclude temporary subjects

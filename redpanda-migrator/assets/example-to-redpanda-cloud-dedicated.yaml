@@ -1,0 +1,54 @@
+# Example 5: Local Redpanda to Redpanda Cloud Dedicated (Data-Only)
+# Use case: Migrate data from local Redpanda to Redpanda Cloud Dedicated
+# Source: Local Redpanda cluster (localhost:9092)
+# Destination: Redpanda Cloud Dedicated cluster
+# Scope: Data only, no schemas
+# Consumer offsets: Enabled with 1-minute sync interval
+# ACLs: Not migrated
+# Authentication: TLS and SCRAM-SHA-256 for cloud cluster
+# Note: Replace <> placeholders with actual values
+
+http:
+  enabled: false
+
+logger:
+  level: DEBUG
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["localhost:9092"]
+    
+    regexp_topics: true
+    topics: ["test_migrator.*"]
+    
+    consumer_group: "migration_test_v1"
+    
+    metadata_max_age: 30s
+    
+    schema_registry:
+      url: "http://source-registry:8081"
+
+output:
+  redpanda_migrator:
+    # Replace with your Redpanda Cloud Dedicated seed broker
+    seed_brokers: ["seed-<cluster-id>.fmc.prd.cloud.redpanda.com:9092"]
+    
+    consumer_groups:
+      interval: 1m
+    
+    # TLS enabled for Redpanda Cloud
+    tls:
+      enabled: true
+    
+    # SASL authentication for Redpanda Cloud
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "<your-username>"
+        password: "<your-password>"
+    
+    schema_registry:
+      url: "https://schema-registry-<cluster-id>.fmc.prd.cloud.redpanda.com:30081"
+      enabled: false  # Data-only migration
+    
+    # Not required for Dedicated, but shown for completeness
+    serverless: false
