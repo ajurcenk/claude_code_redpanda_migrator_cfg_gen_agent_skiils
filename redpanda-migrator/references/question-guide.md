@@ -6,6 +6,28 @@ Use this guide to systematically gather all required information for generating 
 
 Ask questions in this order to build context progressively. Don't overwhelm users with all questions at once - ask follow-up questions based on previous answers.
 
+## Phase 0: Deployment Type (Ask First)
+
+### Critical Initial Question
+
+**What is the Redpanda Connect deployment type?**
+- Redpanda Cloud
+- Redpanda Serverless
+- Local (self-hosted)
+- Custom (on-premises or other cloud)
+
+**Why this matters:**
+- **Redpanda Cloud/Serverless**: Must use environment variable secrets (${SECRET_NAME} format) for all credentials
+- **Local/Custom**: Can use direct credentials in YAML configuration
+
+**Impact on configuration:**
+- If Cloud/Serverless: All seed_brokers, usernames, and passwords will use ${SECRET_NAME} format
+- If Local/Custom: Direct values will be used in configuration
+
+**Follow-up for Cloud/Serverless:**
+- Inform user they need to create secrets in Redpanda Cloud Console
+- Provide link: https://docs.redpanda.com/redpanda-cloud/develop/connect/configuration/secret-management/
+
 ## Phase 1: Source and Destination Basics
 
 ### Initial Questions
@@ -228,3 +250,124 @@ Before generating configuration, verify:
 - If consumer offset translation enabled, warn about partition count requirement
 - If ACL migration enabled, mention WRITE permission exclusion
 - If schema migration enabled, confirm Schema Registry URLs provided
+
+## Secrets Management for Cloud Deployments
+
+### Secret Naming Conventions
+
+When deployment type is **Redpanda Cloud** or **Redpanda Serverless**, use these standard secret names:
+
+#### For Redpanda Clusters (Source or Destination)
+
+```yaml
+${REDPANDA_BROKERS}      # Seed brokers
+${REDPANDA_USER}         # SASL username
+${REDPANDA_USER_PWD}     # SASL password
+```
+
+**Use when:**
+- Source is: Redpanda Cloud, Redpanda Dedicated, Redpanda Serverless
+- Destination is: Redpanda Cloud, Redpanda Dedicated, Redpanda Serverless
+
+#### For Confluent Cloud Clusters (Source or Destination)
+
+```yaml
+${CC_BROKERS}            # Bootstrap brokers
+${CC_USER}               # API key (username)
+${CC_USER_PWD}           # API secret (password)
+```
+
+**Use when:**
+- Source is: Confluent Cloud
+- Destination is: Confluent Cloud
+
+#### For Custom Kafka/AWS MSK Clusters (Source or Destination)
+
+```yaml
+${KAFKA_BROKERS}         # Bootstrap brokers
+${KAFKA_USER}            # SASL username
+${KAFKA_USER_PWD}        # SASL password
+```
+
+**Use when:**
+- Source is: Apache Kafka, AWS MSK, custom Kafka
+- Destination is: Apache Kafka, AWS MSK, custom Kafka
+
+### Decision Tree for Secret Names
+
+```
+If deployment type is Cloud/Serverless:
+  
+  If source cluster is Redpanda:
+    Use: ${REDPANDA_BROKERS}, ${REDPANDA_USER}, ${REDPANDA_USER_PWD}
+  
+  If source cluster is Confluent Cloud:
+    Use: ${CC_BROKERS}, ${CC_USER}, ${CC_USER_PWD}
+  
+  If source cluster is Kafka/MSK/Custom:
+    Use: ${KAFKA_BROKERS}, ${KAFKA_USER}, ${KAFKA_USER_PWD}
+  
+  (Same logic applies for destination cluster)
+
+If deployment type is Local/Custom:
+  Use direct values in configuration (no secrets)
+```
+
+### Example Configurations by Deployment Type
+
+#### Cloud Deployment: Confluent to Redpanda
+
+```yaml
+input:
+  redpanda_migrator:
+    seed_brokers: ["${CC_BROKERS}"]
+    sasl:
+      - mechanism: "PLAIN"
+        username: "${CC_USER}"
+        password: "${CC_USER_PWD}"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+```
+
+#### Local Deployment: Confluent to Redpanda
+
+```yaml
+input:
+  redpanda_migrator:
+    seed_brokers: ["pkc-abc123.confluent.cloud:9092"]
+    sasl:
+      - mechanism: "PLAIN"
+        username: "API_KEY_HERE"
+        password: "API_SECRET_HERE"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["localhost:9092"]
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "admin"
+        password: "admin-password"
+```
+
+### Instructions to Provide with Cloud Configurations
+
+When generating configurations for Cloud/Serverless deployment, always include:
+
+**After generating the configuration, tell the user:**
+
+"Since you're deploying to Redpanda Cloud/Serverless, you'll need to create the following secrets in the Redpanda Cloud Console:
+
+1. Navigate to: Your Namespace → Connectors → Secrets
+2. Create these secrets with appropriate values:
+   - `REDPANDA_BROKERS`: Your cluster's seed brokers
+   - `REDPANDA_USER`: Your SASL username  
+   - `REDPANDA_USER_PWD`: Your SASL password
+   - [Add CC_* or KAFKA_* secrets if applicable]
+
+Documentation: https://docs.redpanda.com/redpanda-cloud/develop/connect/configuration/secret-management/"

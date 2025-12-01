@@ -330,7 +330,7 @@ schema_registry:
     skip_cert_verify: false
   
   # Schema version migration
-  versions: latest  # Options: "latest" or "all"
+  versions: all  # Options: "all" (DEFAULT - full history) or "latest" (current version only)
   
   # Synchronization interval
   interval: 10s  # How often to sync schemas (optional, default: once at startup)
@@ -357,11 +357,12 @@ schema_registry:
 - Recommended intervals: `10s` to `1m` depending on schema update frequency
 
 **Schema version options:**
+- `all`: Migrate complete version history (DEFAULT - recommended for production)
+  - Ensures full schema compatibility and history preservation
+  - Use for: Production migrations, complete historical record, full compatibility requirements
 - `latest`: Migrate only the latest version of each schema (faster, less history)
   - When combined with `interval`: Continuously captures new "latest" versions
-  - Use for: Active schema evolution, faster migrations
-- `all`: Migrate complete version history (slower, full compatibility)
-  - Use for: Complete historical record, full compatibility requirements
+  - Use for: Active schema evolution, faster migrations, testing scenarios
 
 **Subject filtering:**
 - **`include`**: List of regex patterns to include specific subjects
@@ -406,6 +407,252 @@ This enables Prometheus metrics endpoint at `http://localhost:4195/metrics`.
 
 Key metrics:
 - `input_redpanda_migrator_lag` - Migration lag per topic/partition
+
+## Secrets Management for Cloud Deployments
+
+When deploying Redpanda Connect to **Redpanda Cloud** or **Redpanda Serverless**, always use environment variable secrets for credentials instead of plain text values.
+
+### Deployment Type Decision
+
+**Ask the user:** "What is the Redpanda Connect deployment type?"
+- **Redpanda Cloud** → Use secrets (${SECRET_NAME} format)
+- **Redpanda Serverless** → Use secrets (${SECRET_NAME} format)
+- **Local** → Use direct credentials in YAML
+- **Custom** → Use direct credentials in YAML
+
+### Standard Secret Names by Platform
+
+#### Redpanda Cloud/Dedicated/Serverless
+
+```yaml
+${REDPANDA_BROKERS}     # Seed brokers (comma-separated)
+${REDPANDA_USER}        # Username for authentication
+${REDPANDA_USER_PWD}    # Password for authentication
+```
+
+#### Confluent Cloud
+
+```yaml
+${CC_BROKERS}           # Bootstrap brokers (comma-separated)
+${CC_USER}              # API key (username)
+${CC_USER_PWD}          # API secret (password)
+```
+
+#### AWS MSK / Custom Kafka
+
+```yaml
+${KAFKA_BROKERS}        # Bootstrap brokers (comma-separated)
+${KAFKA_USER}           # Username for authentication
+${KAFKA_USER_PWD}       # Password for authentication
+```
+
+### Secrets Configuration Examples
+
+#### Example 1: Redpanda Cloud to Redpanda Cloud
+
+```yaml
+http:
+  enabled: false
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    topics: ["orders.*"]
+    regexp_topics: true
+    consumer_group: "migrator"
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+    tls:
+      enabled: true
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    consumer_groups: true
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+    tls:
+      enabled: true
+
+metrics:
+  prometheus: {}
+```
+
+#### Example 2: Confluent Cloud to Redpanda Cloud
+
+```yaml
+http:
+  enabled: false
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["${CC_BROKERS}"]
+    topics: ["hello.*"]
+    regexp_topics: true
+    consumer_group: "migration_test_v3"
+    metadata_max_age: 30s
+    tls:
+      enabled: true
+      enable_renegotiation: true
+    sasl:
+      - mechanism: "PLAIN"
+        username: "${CC_USER}"
+        password: "${CC_USER_PWD}"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    consumer_groups:
+      interval: 10s
+    tls:
+      enabled: true
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+
+metrics:
+  prometheus: {}
+```
+
+#### Example 3: Custom Kafka to Redpanda Cloud
+
+```yaml
+http:
+  enabled: false
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["${KAFKA_BROKERS}"]
+    topics: ["hello.*"]
+    regexp_topics: true
+    consumer_group: "migration_test_v3"
+    metadata_max_age: 30s
+    tls:
+      enabled: true
+    sasl:
+      - mechanism: "SCRAM-SHA-512"
+        username: "${KAFKA_USER}"
+        password: "${KAFKA_USER_PWD}"
+    schema_registry:
+      url: "http://kafka-schema-registry:8081"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    consumer_groups:
+      interval: 10s
+    tls:
+      enabled: true
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+    schema_registry:
+      url: "http://redpanda-schema-registry:8081"
+      enabled: true
+      versions: all
+
+metrics:
+  prometheus: {}
+```
+
+#### Example 4: AWS MSK to Redpanda Serverless
+
+```yaml
+http:
+  enabled: false
+
+input:
+  redpanda_migrator:
+    seed_brokers: ["${KAFKA_BROKERS}"]
+    topics: ["prod_.*"]
+    regexp_topics: true
+    consumer_group: "msk_migrator"
+    tls:
+      enabled: true
+    sasl:
+      - mechanism: "SCRAM-SHA-512"
+        username: "${KAFKA_USER}"
+        password: "${KAFKA_USER_PWD}"
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    consumer_groups:
+      interval: 1m
+      exclude:
+        - console-consumer-.*
+        - __.*
+    tls:
+      enabled: true
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+    serverless: true
+
+metrics:
+  prometheus: {}
+```
+
+### Creating Secrets in Redpanda Cloud
+
+For Redpanda Cloud or Serverless deployments:
+
+1. **Create secrets** in Redpanda Cloud Console:
+   - Navigate to: Namespace → Connectors → Secrets
+   - Create each required secret with appropriate names
+   
+2. **Set secret values:**
+   - `REDPANDA_BROKERS`: Your cluster's seed brokers (e.g., "seed-abc.cloud.redpanda.com:9092")
+   - `REDPANDA_USER`: Your SASL username
+   - `REDPANDA_USER_PWD`: Your SASL password
+   - Similar pattern for CC_* (Confluent) or KAFKA_* (custom) secrets
+
+3. **Reference in configuration:**
+   - Use `${SECRET_NAME}` format in YAML
+   - Never use plain text credentials
+
+**Documentation:** https://docs.redpanda.com/redpanda-cloud/develop/connect/configuration/secret-management/
+
+### Local vs Cloud Configuration Comparison
+
+#### Local/Custom Deployment (Plain Text)
+
+```yaml
+input:
+  redpanda_migrator:
+    seed_brokers: ["localhost:9092"]
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "admin"
+        password: "admin-password"
+```
+
+#### Cloud/Serverless Deployment (Secrets)
+
+```yaml
+input:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+```
+
+### Best Practices
+
+1. **Always use secrets** for Cloud/Serverless deployments
+2. **Use consistent naming** based on platform (REDPANDA_*, CC_*, KAFKA_*)
+3. **Document secret names** in your deployment documentation
+4. **Never commit** configurations with plain text credentials to version control
+5. **Rotate secrets** periodically for security
 
 ## Complete Example Templates
 

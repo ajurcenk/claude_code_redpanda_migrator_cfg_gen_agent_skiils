@@ -20,6 +20,17 @@ When a user requests a Redpanda Migrator configuration:
 
 Always ask these questions to build the configuration:
 
+### Deployment Type (Ask First)
+
+**Critical Question:**
+- **Redpanda Connect deployment type:** Redpanda Cloud, Redpanda Serverless, Local, or Custom?
+  - If Redpanda Cloud or Redpanda Serverless: Use environment variable secrets for credentials
+  - If Local or Custom: Use direct credentials in configuration
+
+**Important:** This determines whether credentials should be:
+- **Cloud/Serverless**: Stored as secrets (${SECRET_NAME} format)
+- **Local/Custom**: Embedded directly in YAML
+
 ### Source and Destination Clusters
 
 **Required Information:**
@@ -152,11 +163,135 @@ Reference these patterns for typical requests:
 ## Important Notes
 
 - **Message Ordering:** The Redpanda Migrator automatically preserves message ordering at the partition level (max_in_flight=1 is hardcoded)
+- **Secrets Management:** When deploying to Redpanda Cloud or Serverless, always use environment variable secrets for credentials
+  - Format: `${SECRET_NAME}` instead of plain text values
+  - Required for: seed_brokers, username, password, schema_registry URLs
+  - Documentation: https://docs.redpanda.com/redpanda-cloud/develop/connect/configuration/secret-management/
 - **Schema Registry Mode:** Destination Schema Registry must be in READWRITE or IMPORT mode
 - **Consumer Group Offsets:** Require identical partition counts between source and destination
 - **ACL Safety:** ALLOW WRITE permissions are excluded, ALLOW ALL is downgraded to ALLOW READ
 - **Topic Creation:** Destination topics are created automatically if they don't exist
 - **Monitoring:** The `input_redpanda_migrator_lag` metric tracks migration progress
+
+## Secrets Management for Cloud Deployments
+
+When Redpanda Connect deployment type is **Redpanda Cloud** or **Redpanda Serverless**, use environment variable secrets for all sensitive credentials.
+
+### Standard Secret Names by Platform
+
+**Redpanda Cloud/Serverless:**
+- `${REDPANDA_BROKERS}` - Seed brokers
+- `${REDPANDA_USER}` - Username
+- `${REDPANDA_USER_PWD}` - Password
+
+**Confluent Cloud:**
+- `${CC_BROKERS}` - Bootstrap brokers
+- `${CC_USER}` - API key (username)
+- `${CC_USER_PWD}` - API secret (password)
+
+**AWS MSK / Custom Kafka:**
+- `${KAFKA_BROKERS}` - Bootstrap brokers
+- `${KAFKA_USER}` - Username
+- `${KAFKA_USER_PWD}` - Password
+
+### Example: Redpanda Cloud to Redpanda Cloud
+
+```yaml
+input:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+    tls:
+      enabled: true
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+    tls:
+      enabled: true
+```
+
+### Example: Confluent Cloud to Redpanda Cloud
+
+```yaml
+input:
+  redpanda_migrator:
+    seed_brokers: ["${CC_BROKERS}"]
+    sasl:
+      - mechanism: "PLAIN"
+        username: "${CC_USER}"
+        password: "${CC_USER_PWD}"
+    tls:
+      enabled: true
+      enable_renegotiation: true
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+    tls:
+      enabled: true
+```
+
+### Example: Custom Kafka to Redpanda Cloud
+
+```yaml
+input:
+  redpanda_migrator:
+    seed_brokers: ["${KAFKA_BROKERS}"]
+    sasl:
+      - mechanism: "SCRAM-SHA-512"
+        username: "${KAFKA_USER}"
+        password: "${KAFKA_USER_PWD}"
+    tls:
+      enabled: true
+
+output:
+  redpanda_migrator:
+    seed_brokers: ["${REDPANDA_BROKERS}"]
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "${REDPANDA_USER}"
+        password: "${REDPANDA_USER_PWD}"
+    tls:
+      enabled: true
+```
+
+### Creating Secrets in Redpanda Cloud
+
+When deployment type is Redpanda Cloud or Serverless:
+
+1. **Create secrets** in Redpanda Cloud Console or via CLI
+2. **Reference secrets** using `${SECRET_NAME}` format in configuration
+3. **Never use plain text** credentials in Cloud/Serverless deployments
+
+**Documentation:** https://docs.redpanda.com/redpanda-cloud/develop/connect/configuration/secret-management/
+
+### Local vs Cloud Configuration
+
+**Local/Custom Deployment:**
+```yaml
+seed_brokers: ["localhost:9092"]
+username: "admin"
+password: "admin-password"
+```
+
+**Cloud/Serverless Deployment:**
+```yaml
+seed_brokers: ["${REDPANDA_BROKERS}"]
+username: "${REDPANDA_USER}"
+password: "${REDPANDA_USER_PWD}"
+```
 
 ### Advanced Configuration Options
 
@@ -184,8 +319,8 @@ Reference these patterns for typical requests:
   - Use for active schema evolution during migration
   
 - **schema_registry.versions:** Schema version migration strategy
+  - `all`: Migrate complete version history (DEFAULT - recommended for production)
   - `latest`: Migrate only the latest version (faster, less history)
-  - `all`: Migrate complete version history (slower, full compatibility)
   - When combined with `interval`: `latest` captures new versions as they become latest
   
 - **schema_registry.include:** Filter schemas by subject patterns
