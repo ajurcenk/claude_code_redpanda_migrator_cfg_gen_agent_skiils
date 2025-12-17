@@ -95,7 +95,34 @@ rpk connect run config.yaml
 
 ## 📋 **Change History**
 
-### **Version 3.0 (Current) - December 2024**
+### **Version 3.0.5 (Current) - December 2024**
+
+#### **Complete Bundle Structure Removal**
+- Removed all 29 `redpanda_migrator_bundle` structural references
+- Updated documentation (SKILL.md, config-spec.md)
+- Rewrote examples (example-full-migration.yaml, example-data-only.yaml)
+- Completely rewrote validation script (validate_config.py)
+- Removed "bundle" from consumer group names
+- **Total references removed:** 32
+
+**Impact:**
+- Pure Redpanda Migrator v2 structure throughout
+- Working validation script with v2 paths
+- Simplified configurations
+- Complete consistency
+
+#### **AWS MSK Example Consolidation**
+- Removed redundant `example-aws-msk.yaml`
+- Kept comprehensive `example-aws-msk-to-redpanda.yaml`
+- **Total examples:** 16 (down from 17)
+
+#### **config-spec.md Regeneration**
+- Updated base YAML structure to v2
+- Rewrote all 4 example templates
+- Updated AWS MSK example (IAM → SCRAM-SHA-512)
+- Corrected all field reference paths
+
+### **Version 3.0 - December 2024**
 
 #### **Added: Secrets Management for Cloud Deployments**
 
