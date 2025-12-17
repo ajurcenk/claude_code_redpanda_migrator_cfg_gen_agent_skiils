@@ -12,24 +12,26 @@ http:
 # Logger configuration (optional)
 logger:
   level: INFO  # Options: TRACE, DEBUG, INFO, WARN, ERROR
-  format: json  # Options: json, logfmt
 
 # Source cluster configuration
 input:
-  redpanda_migrator_bundle:
-    redpanda_migrator:
-      # Source cluster settings
+  redpanda_migrator:
+    # Source cluster settings (seed_brokers, topics, etc.)
+    
+    # Source schema registry (optional)
     schema_registry:
-      # Source schema registry settings (optional)
-    migrate_schemas_before_data: true
+      url: "http://source-schema-registry:8081"
 
 # Destination cluster configuration
 output:
-  redpanda_migrator_bundle:
-    redpanda_migrator:
-      # Destination cluster settings
+  redpanda_migrator:
+    # Destination cluster settings (seed_brokers, consumer_groups, etc.)
+    
+    # Destination schema registry (optional)
     schema_registry:
-      # Destination schema registry settings (optional)
+      url: "http://dest-schema-registry:8081"
+      enabled: true
+      versions: all
 
 # Monitoring configuration
 metrics:
@@ -662,52 +664,53 @@ input:
 http:
   enabled: false
 
+logger:
+  level: INFO
+
 input:
-  redpanda_migrator_bundle:
-    redpanda_migrator:
-      seed_brokers:
-        - "source-kafka:9092"
-      topics:
-        - '^[^_]'  # Skip internal topics starting with _
-      regexp_topics: true
-      consumer_group: "migrator_bundle"
-      start_from_oldest: true
-      replication_factor_override: false
-      sasl:
-        - mechanism: SCRAM-SHA-256
-          username: "source-user"
-          password: "source-password"
-      tls:
-        enabled: true
-        skip_cert_verify: false
+  redpanda_migrator:
+    seed_brokers: ["source-kafka:9092"]
+    
+    topics: ["^[^_]"]  # Skip internal topics starting with _
+    regexp_topics: true
+    
+    consumer_group: "migrator_full"
+    
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "source-user"
+        password: "source-password"
+    
+    tls:
+      enabled: true
+    
     schema_registry:
       url: "http://source-schema-registry:8081"
-      include_deleted: true
-      subject_filter: ""
       basic_auth:
         enabled: true
         username: "sr-user"
         password: "sr-password"
-    migrate_schemas_before_data: true
 
 output:
-  redpanda_migrator_bundle:
-    redpanda_migrator:
-      seed_brokers:
-        - "destination-redpanda:9092"
-      replication_factor_override: false
-      sync_topic_acls: true
-      consumer_groups: true
-      sasl:
-        - mechanism: SCRAM-SHA-256
-          username: "dest-user"
-          password: "dest-password"
-      tls:
-        enabled: true
+  redpanda_migrator:
+    seed_brokers: ["destination-redpanda:9092"]
+    
+    sync_topic_acls: true
+    consumer_groups: true
+    
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "dest-user"
+        password: "dest-password"
+    
+    tls:
+      enabled: true
+    
     schema_registry:
       url: "http://dest-schema-registry:8081"
-      migrate_schema_versions: "all"
-      sync_interval: "1m"
+      enabled: true
+      versions: all
+      interval: 1m
       basic_auth:
         enabled: true
         username: "dest-sr-user"
@@ -724,25 +727,20 @@ http:
   enabled: false
 
 input:
-  redpanda_migrator_bundle:
-    redpanda_migrator:
-      seed_brokers:
-        - "source-kafka:9092"
-      topics:
-        - "orders"
-        - "users"
-        - "products"
-      regexp_topics: false
-      consumer_group: "data_migrator"
-      start_from_oldest: true
+  redpanda_migrator:
+    seed_brokers: ["source-kafka:9092"]
+    
+    topics: ["orders", "users", "products"]
+    regexp_topics: false
+    
+    consumer_group: "data_migrator"
 
 output:
-  redpanda_migrator_bundle:
-    redpanda_migrator:
-      seed_brokers:
-        - "destination-kafka:9092"
-      consumer_groups: false
-      sync_topic_acls: false
+  redpanda_migrator:
+    seed_brokers: ["destination-kafka:9092"]
+    
+    consumer_groups: false
+    sync_topic_acls: false
 
 metrics:
   prometheus: {}
@@ -751,54 +749,77 @@ metrics:
 ### Example 3: AWS MSK to Redpanda Cloud
 
 ```yaml
-http:
-  enabled: false
+# AWS MSK to Redpanda Cloud Dedicated
+# Authentication: SCRAM-SHA-512 for MSK, SCRAM-SHA-256 for Redpanda
+# Includes: Data migration, consumer offsets, replication factor override
+
+logger:
+  level: DEBUG
 
 input:
-  redpanda_migrator_bundle:
-    redpanda_migrator:
-      seed_brokers:
-        - "b-1.msk-cluster.abc123.kafka.us-east-1.amazonaws.com:9096"
-      topics:
-        - '^[^_]'
-      regexp_topics: true
-      consumer_group: "msk_migrator"
-      start_from_oldest: true
-      sasl:
-        - mechanism: AWS_MSK_IAM
-          aws:
-            enabled: true
-            region: "us-east-1"
-            use_ec2_role_provider: true
-      tls:
-        enabled: true
+  redpanda_migrator:
+    # AWS MSK bootstrap servers
+    seed_brokers: ["b-1.msk-cluster-name.xxxxx.kafka.us-east-1.amazonaws.com:9096"]
+    
+    regexp_topics: true
+    topics: ["msk.*"]
+    
+    consumer_group: "migration_test_v1"
+    metadata_max_age: 30s
+    
+    tls:
+      enabled: true
+    
+    # AWS MSK SCRAM authentication
+    sasl:
+      - mechanism: "SCRAM-SHA-512"
+        username: "msk-username"
+        password: "msk-password"
+    
     schema_registry:
       url: "https://glue-schema-registry.us-east-1.amazonaws.com"
-      include_deleted: true
 
 output:
-  redpanda_migrator_bundle:
-    redpanda_migrator:
-      seed_brokers:
-        - "seed-abc123.cloud.redpanda.com:9092"
-      sync_topic_acls: false  # ACLs don't translate between AWS MSK and Redpanda
-      consumer_groups: true
-      sasl:
-        - mechanism: SCRAM-SHA-256
-          username: "redpanda-user"
-          password: "redpanda-password"
-      tls:
-        enabled: true
+  redpanda_migrator:
+    seed_brokers: ["seed-abc123.fmc.prd.cloud.redpanda.com:9092"]
+    
+    consumer_groups:
+      interval: 10s
+    
+    tls:
+      enabled: true
+    
+    sasl:
+      - mechanism: "SCRAM-SHA-256"
+        username: "redpanda-username"
+        password: "redpanda-password"
+    
+    # Override replication factor (MSK RF=2 → Redpanda RF=3)
+    topic_replication_factor: 3
+    
     schema_registry:
-      url: "https://schema-registry.cloud.redpanda.com:30081"
-      migrate_schema_versions: "all"
+      url: "https://schema-registry-abc123.fmc.prd.cloud.redpanda.com:30081"
+      enabled: true
+      versions: all
       basic_auth:
         enabled: true
-        username: "sr-user"
+        username: "sr-username"
         password: "sr-password"
 
 metrics:
   prometheus: {}
+```
+
+**Note:** This example shows SCRAM authentication. For IAM authentication with AWS MSK, use:
+```yaml
+input:
+  redpanda_migrator:
+    sasl:
+      - mechanism: AWS_MSK_IAM
+        aws:
+          enabled: true
+          region: "us-east-1"
+          use_ec2_role_provider: true
 ```
 
 ### Example 4: Redpanda to Redpanda (Data-Only with Consumer Offset Translation)
@@ -845,27 +866,37 @@ output:
 
 ### Consumer Offset Translation
 
-- `output.redpanda_migrator_bundle.redpanda_migrator.consumer_groups: true` - Enables offset migration
+- `output.redpanda_migrator.consumer_groups: true` - Enables offset migration
 - Requires identical partition counts between source and destination
 
 ### ACL Migration
 
-- `output.redpanda_migrator_bundle.redpanda_migrator.sync_topic_acls: true` - Enables ACL migration
+- `output.redpanda_migrator.sync_topic_acls: true` - Enables ACL migration
 - Automatically sanitizes ACLs (excludes WRITE, downgrades ALL to READ)
 
 ### Schema Migration
 
-- `input.redpanda_migrator_bundle.schema_registry.url` - Source Schema Registry
-- `output.redpanda_migrator_bundle.schema_registry.url` - Destination Schema Registry
-- `output.redpanda_migrator_bundle.schema_registry.migrate_schema_versions` - "latest" or "all"
+- `input.redpanda_migrator.schema_registry.url` - Source Schema Registry
+- `output.redpanda_migrator.schema_registry.url` - Destination Schema Registry
+- `output.redpanda_migrator.schema_registry.enabled` - Enable/disable schema migration
+- `output.redpanda_migrator.schema_registry.versions` - Version strategy (`all` or `latest`)
+- `output.redpanda_migrator.schema_registry.interval` - Periodic sync interval
+
+### Replication
+
+- `output.redpanda_migrator.topic_replication_factor` - Override replication factor for new topics
+
+### Serverless Mode
+
+- `output.redpanda_migrator.serverless: true` - Required for Redpanda Cloud Serverless
+- `output.redpanda_migrator.schema_registry.versions` - "all" (default) or "latest"
 - Destination must be in READWRITE or IMPORT mode
 
 ### Topic Filtering
 
-- `input.redpanda_migrator_bundle.redpanda_migrator.topics` - List of topics or regex patterns
-- `input.redpanda_migrator_bundle.redpanda_migrator.regexp_topics` - true for regex, false for exact names
+- `input.redpanda_migrator.topics` - List of topics or regex patterns
+- `input.redpanda_migrator.regexp_topics` - true for regex, false for exact names
 
 ### Replication Factor
 
-- `input.redpanda_migrator_bundle.redpanda_migrator.replication_factor_override` - false or integer
-- `output.redpanda_migrator_bundle.redpanda_migrator.replication_factor_override` - false or integer
+- `output.redpanda_migrator.topic_replication_factor` - Override replication factor for new topics

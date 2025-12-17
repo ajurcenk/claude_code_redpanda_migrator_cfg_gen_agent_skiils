@@ -15,29 +15,29 @@ def validate_required_fields(config: Dict[str, Any]) -> List[str]:
     """Validate that required fields are present."""
     errors = []
     
-    # Check input.redpanda_migrator_bundle.redpanda_migrator.seed_brokers
+    # Check input.redpanda_migrator.seed_brokers
     try:
-        input_brokers = config['input']['redpanda_migrator_bundle']['redpanda_migrator']['seed_brokers']
+        input_brokers = config['input']['redpanda_migrator']['seed_brokers']
         if not input_brokers or not isinstance(input_brokers, list):
-            errors.append("input.redpanda_migrator_bundle.redpanda_migrator.seed_brokers must be a non-empty list")
+            errors.append("input.redpanda_migrator.seed_brokers must be a non-empty list")
     except KeyError:
-        errors.append("Missing required field: input.redpanda_migrator_bundle.redpanda_migrator.seed_brokers")
+        errors.append("Missing required field: input.redpanda_migrator.seed_brokers")
     
-    # Check output.redpanda_migrator_bundle.redpanda_migrator.seed_brokers
+    # Check output.redpanda_migrator.seed_brokers
     try:
-        output_brokers = config['output']['redpanda_migrator_bundle']['redpanda_migrator']['seed_brokers']
+        output_brokers = config['output']['redpanda_migrator']['seed_brokers']
         if not output_brokers or not isinstance(output_brokers, list):
-            errors.append("output.redpanda_migrator_bundle.redpanda_migrator.seed_brokers must be a non-empty list")
+            errors.append("output.redpanda_migrator.seed_brokers must be a non-empty list")
     except KeyError:
-        errors.append("Missing required field: output.redpanda_migrator_bundle.redpanda_migrator.seed_brokers")
+        errors.append("Missing required field: output.redpanda_migrator.seed_brokers")
     
     # Check topics configuration
     try:
-        topics = config['input']['redpanda_migrator_bundle']['redpanda_migrator'].get('topics')
+        topics = config['input']['redpanda_migrator'].get('topics')
         if not topics:
-            errors.append("input.redpanda_migrator_bundle.redpanda_migrator.topics is required")
+            errors.append("input.redpanda_migrator.topics is required")
     except KeyError:
-        errors.append("Missing required field: input.redpanda_migrator_bundle.redpanda_migrator.topics")
+        errors.append("Missing required field: input.redpanda_migrator.topics")
     
     return errors
 
@@ -47,16 +47,20 @@ def validate_schema_registry(config: Dict[str, Any]) -> List[str]:
     errors = []
     
     # Check if schema registry is configured in input
-    input_sr = config.get('input', {}).get('redpanda_migrator_bundle', {}).get('schema_registry')
+    input_sr = config.get('input', {}).get('redpanda_migrator', {}).get('schema_registry')
     if input_sr:
         if 'url' not in input_sr:
-            errors.append("input.redpanda_migrator_bundle.schema_registry.url is required when schema_registry is configured")
+            errors.append("input.redpanda_migrator.schema_registry.url is required when schema_registry is configured")
     
     # Check if schema registry is configured in output
-    output_sr = config.get('output', {}).get('redpanda_migrator_bundle', {}).get('schema_registry')
+    output_sr = config.get('output', {}).get('redpanda_migrator', {}).get('schema_registry')
     if output_sr:
         if 'url' not in output_sr:
-            errors.append("output.redpanda_migrator_bundle.schema_registry.url is required when schema_registry is configured")
+            errors.append("output.redpanda_migrator.schema_registry.url is required when schema_registry is configured")
+        
+        # Check if enabled is set to false (data-only migration)
+        if output_sr.get('enabled') == False:
+            errors.append("NOTE: Schema registry is configured but disabled (enabled: false) - schemas will not be migrated")
     
     # Warn if one is configured but not the other
     if input_sr and not output_sr:
@@ -72,9 +76,33 @@ def validate_consumer_groups(config: Dict[str, Any]) -> List[str]:
     warnings = []
     
     try:
-        consumer_groups = config['output']['redpanda_migrator_bundle']['redpanda_migrator'].get('consumer_groups', False)
+        consumer_groups = config['output']['redpanda_migrator'].get('consumer_groups', False)
         if consumer_groups:
             warnings.append("NOTE: Consumer group offset translation requires identical partition counts between source and destination")
+    except KeyError:
+        pass
+    
+    return warnings
+
+
+def validate_serverless(config: Dict[str, Any]) -> List[str]:
+    """Validate Serverless-specific configuration."""
+    warnings = []
+    
+    try:
+        serverless = config['output']['redpanda_migrator'].get('serverless', False)
+        if serverless:
+            # Check for consumer group exclusions
+            consumer_groups = config['output']['redpanda_migrator'].get('consumer_groups')
+            if isinstance(consumer_groups, dict):
+                exclude = consumer_groups.get('exclude')
+                if not exclude:
+                    warnings.append("WARNING: Serverless mode enabled but no consumer group exclusions configured. Consider excluding internal groups.")
+            
+            # Check for seed broker format
+            brokers = config['output']['redpanda_migrator'].get('seed_brokers', [])
+            if brokers and not any('.mpx.prd.cloud.redpanda.com' in str(b) for b in brokers):
+                warnings.append("WARNING: Serverless mode enabled but broker addresses don't match serverless pattern (.mpx.prd.cloud.redpanda.com)")
     except KeyError:
         pass
     
@@ -88,51 +116,48 @@ def main():
     
     config_file = sys.argv[1]
     
+    # Load YAML file
     try:
         with open(config_file, 'r') as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
-        print(f"Error: File not found: {config_file}")
+        print(f"Error: File '{config_file}' not found")
         sys.exit(1)
     except yaml.YAMLError as e:
-        print(f"Error: Invalid YAML syntax: {e}")
+        print(f"Error: Invalid YAML syntax in '{config_file}'")
+        print(f"  {e}")
         sys.exit(1)
-    
-    print(f"Validating {config_file}...\n")
     
     # Run validations
     all_errors = []
     all_errors.extend(validate_required_fields(config))
     all_errors.extend(validate_schema_registry(config))
     all_errors.extend(validate_consumer_groups(config))
-    
-    # Separate errors and warnings
-    errors = [e for e in all_errors if not e.startswith('WARNING') and not e.startswith('SUGGESTION') and not e.startswith('NOTE')]
-    warnings = [e for e in all_errors if e.startswith('WARNING') or e.startswith('SUGGESTION') or e.startswith('NOTE')]
+    all_errors.extend(validate_serverless(config))
     
     # Print results
-    if errors:
-        print("❌ ERRORS:")
-        for error in errors:
-            print(f"  - {error}")
-        print()
-    
-    if warnings:
-        print("⚠️  WARNINGS & SUGGESTIONS:")
-        for warning in warnings:
-            print(f"  - {warning}")
-        print()
-    
-    if not errors and not warnings:
-        print("✅ Configuration is valid!")
-        sys.exit(0)
-    elif errors:
-        print("❌ Configuration has errors that must be fixed.")
-        sys.exit(1)
+    if all_errors:
+        print(f"\nValidation results for '{config_file}':")
+        print("=" * 60)
+        for error in all_errors:
+            if error.startswith("WARNING:") or error.startswith("NOTE:"):
+                print(f"  {error}")
+            else:
+                print(f"  ERROR: {error}")
+        print("=" * 60)
+        
+        # Exit with error if there are actual errors (not just warnings/notes)
+        has_errors = any(not (e.startswith("WARNING:") or e.startswith("NOTE:")) for e in all_errors)
+        if has_errors:
+            print("\n❌ Validation FAILED\n")
+            sys.exit(1)
+        else:
+            print("\n✅ Validation PASSED (with warnings/notes)\n")
+            sys.exit(0)
     else:
-        print("✅ Configuration is valid (with warnings)")
+        print(f"\n✅ Validation PASSED: '{config_file}' is valid\n")
         sys.exit(0)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
